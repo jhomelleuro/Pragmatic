@@ -24,7 +24,7 @@ namespace Pragmatic.Pragmatic.Features.Games.GetAllGames
             try
             {
                 var httpClient = Resolve<HttpClient>();
-                string apiUrl = settings.Value.GetGameUrl;
+                string apiUrl = settings.Value.GetAllGames;
 
                 logger.Information("Sending request to Pragmatic API: {Url}", apiUrl);
 
