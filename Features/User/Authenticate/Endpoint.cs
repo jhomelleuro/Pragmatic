@@ -1,24 +1,19 @@
 ﻿using Microsoft.Extensions.Options;
 using Newtonsoft.Json;
-using Serilog;
-using System.Net.Http;
-using Pragmatic.Models;
 using Pragmatic.Configuration;
 using System.Security.Cryptography;
 using System.Text;
 
-namespace Pragmatic.Pragmatic.Features.Games.GetGameUrl
+namespace Pragmatic.Pragmatic.Features.User.Authenticate
 {
     internal sealed class Endpoint(
-        Serilog.ILogger logger,
-        IOptions<PragmaticApiSettings> settings) : Endpoint<Request, Response>
+        Serilog.ILogger logger, IOptions<PragmaticApiSettings> settings) : Endpoint<Request, Response>
     {
         public override void Configure()
         {
-            Post("/games/pragmatic/get-game-url");
+            Post("/user/pragmatic/authenticate");
             AllowAnonymous();
         }
-
 
         public override async Task HandleAsync(Request r, CancellationToken ct)
         {
@@ -27,21 +22,15 @@ namespace Pragmatic.Pragmatic.Features.Games.GetGameUrl
             try
             {
                 var httpClient = Resolve<HttpClient>();
-                string apiUrl = settings.Value.GetGameUrl;
-                string secretKey = settings.Value.SecretKey; 
+                string apiUrl = settings.Value.GetAuthenticateUrl;
+                string secretKey = settings.Value.SecretKey;
 
                 logger.Information("Sending request to Pragmatic API: {Url}", apiUrl);
 
                 var formData = new Dictionary<string, string>
                 {
-                    { "secureLogin", r.SecureLogin },
-                    { "symbol", r.Symbol },
-                    { "language", r.Language },
-                    { "currency", r.Currency },
-                    { "platform", r.Platform },
-                    { "playMode", r.PlayMode },
-                    { "lobbyUrl", r.LobbyUrl },
-                    { "externalPlayerId", r.ExternalPlayerId }
+                    { "providerId", r.ProviderId },
+                    { "token", r.Token },
                 };
 
                 // Build sorted query string
@@ -62,7 +51,6 @@ namespace Pragmatic.Pragmatic.Features.Games.GetGameUrl
 
                 logger.Information("Generated hash: {Hash}", hash);
 
-                // Add hash to form data
                 formData.Add("hash", hash);
 
                 var content = new FormUrlEncodedContent(formData);
@@ -79,26 +67,26 @@ namespace Pragmatic.Pragmatic.Features.Games.GetGameUrl
                     if (parsed?.error == "0")
                     {
                         response.IsSuccess = true;
-                        response.Message = "Game URL fetched successfully.";
+                        response.Message = "User Account Created Successfully.";
                         response.Result = parsed;
                     }
                     else
                     {
                         response.IsSuccess = false;
-                        response.Message = parsed?.description ?? "Failed to fetch game URL.";
+                        response.Message = parsed?.description ?? "Failed to fetch create user account.";
                         response.Result = null;
                     }
                 }
                 else
                 {
                     response.IsSuccess = false;
-                    response.Message = $"Failed to fetch game URL. Status code: {apiResponse.StatusCode}";
+                    response.Message = $"Failed to fetch create account. Status code: {apiResponse.StatusCode}";
                     response.Result = null;
                 }
             }
             catch (Exception ex)
             {
-                logger.Error(ex, "Error fetching game URL from Pragmatic API.");
+                logger.Error(ex, "Error fetching create account from Pragmatic API.");
                 response.IsSuccess = false;
                 response.Message = "Internal error occurred while calling Pragmatic API.";
                 response.Result = null;

@@ -6,5 +6,8 @@
         public string GetLobbyGames { get; set; }
         public string GetAllGames { get; set; }
         public string SecretKey { get; set; }
+        public string GetCreateUserUrl { get; set; }
+
+        public string GetAuthenticateUrl { get; set; }
     }
 }

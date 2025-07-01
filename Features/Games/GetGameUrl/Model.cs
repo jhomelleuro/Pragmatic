@@ -12,6 +12,7 @@ namespace Pragmatic.Pragmatic.Features.Games.GetGameUrl
         public string Platform { get; set; } = "WEB";
         public string PlayMode { get; set; } = "DEMO";
         public string ExternalPlayerId { get; set; } = "6837d276a3038dda4b1925fb";
+        public string LobbyUrl { get; set; } = "http://127.0.0.1:2222/";
     }
 
     internal sealed class Validator : FluentValidation.AbstractValidator<Request>
