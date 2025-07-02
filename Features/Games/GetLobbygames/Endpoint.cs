@@ -1,9 +1,11 @@
-using Microsoft.Extensions.Options;
+﻿using Microsoft.Extensions.Options;
 using Newtonsoft.Json;
 using Serilog;
 using System.Net.Http;
 using Pragmatic.Models;
 using Pragmatic.Configuration;
+using Pragmatic.Helpers;
+using static Pragmatic.Helpers.PragmaticEndpoints;
 
 namespace Pragmatic.Pragmatic.Features.Games.GetLobbyGames
 {
@@ -23,8 +25,8 @@ namespace Pragmatic.Pragmatic.Features.Games.GetLobbyGames
 
             try
             {
-                var httpClient = Resolve<HttpClient>();
-                string apiUrl = settings.Value.GetLobbyGames;
+                var httpClient = Resolve<HttpClient>();                
+                string apiUrl = $"{settings.Value.BaseUrl}{PragmaticEndpoint.GetLobbyGames.GetPath()}";
 
                 logger.Information("Sending request to Pragmatic API: {Url}", apiUrl);
 

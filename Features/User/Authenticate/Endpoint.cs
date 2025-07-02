@@ -3,6 +3,8 @@ using Newtonsoft.Json;
 using Pragmatic.Configuration;
 using System.Security.Cryptography;
 using System.Text;
+using Pragmatic.Helpers;
+using static Pragmatic.Helpers.PragmaticEndpoints;
 
 namespace Pragmatic.Pragmatic.Features.User.Authenticate
 {
@@ -22,7 +24,8 @@ namespace Pragmatic.Pragmatic.Features.User.Authenticate
             try
             {
                 var httpClient = Resolve<HttpClient>();
-                string apiUrl = settings.Value.GetAuthenticateUrl;
+                
+                string apiUrl = $"{settings.Value.BaseUrl}{PragmaticEndpoint.GetAuthenticateUrl.GetPath()}";
                 string secretKey = settings.Value.SecretKey;
 
                 logger.Information("Sending request to Pragmatic API: {Url}", apiUrl);
@@ -67,26 +70,26 @@ namespace Pragmatic.Pragmatic.Features.User.Authenticate
                     if (parsed?.error == "0")
                     {
                         response.IsSuccess = true;
-                        response.Message = "User Account Created Successfully.";
+                        response.Message = "User authenticated successfully.";
                         response.Result = parsed;
                     }
                     else
                     {
                         response.IsSuccess = false;
-                        response.Message = parsed?.description ?? "Failed to fetch create user account.";
+                        response.Message = parsed?.description ?? "Failed to authenticate user.";
                         response.Result = null;
                     }
                 }
                 else
                 {
                     response.IsSuccess = false;
-                    response.Message = $"Failed to fetch create account. Status code: {apiResponse.StatusCode}";
+                    response.Message = $"Failed to authenticate user. Status code: {apiResponse.StatusCode}";
                     response.Result = null;
                 }
             }
             catch (Exception ex)
             {
-                logger.Error(ex, "Error fetching create account from Pragmatic API.");
+                logger.Error(ex, "Error authenticating user via Pragmatic API.");
                 response.IsSuccess = false;
                 response.Message = "Internal error occurred while calling Pragmatic API.";
                 response.Result = null;

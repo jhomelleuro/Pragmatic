@@ -6,6 +6,8 @@ using Pragmatic.Models;
 using Pragmatic.Configuration;
 using System.Security.Cryptography;
 using System.Text;
+using Pragmatic.Helpers;
+using static Pragmatic.Helpers.PragmaticEndpoints;
 
 namespace Pragmatic.Pragmatic.Features.Games.GetGameUrl
 {
@@ -19,7 +21,6 @@ namespace Pragmatic.Pragmatic.Features.Games.GetGameUrl
             AllowAnonymous();
         }
 
-
         public override async Task HandleAsync(Request r, CancellationToken ct)
         {
             var response = new Response();
@@ -27,8 +28,9 @@ namespace Pragmatic.Pragmatic.Features.Games.GetGameUrl
             try
             {
                 var httpClient = Resolve<HttpClient>();
-                string apiUrl = settings.Value.GetGameUrl;
-                string secretKey = settings.Value.SecretKey; 
+                
+                string apiUrl = $"{settings.Value.BaseUrl}{PragmaticEndpoint.GetGameUrl.GetPath()}";
+                string secretKey = settings.Value.SecretKey;
 
                 logger.Information("Sending request to Pragmatic API: {Url}", apiUrl);
 

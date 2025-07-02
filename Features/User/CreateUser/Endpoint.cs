@@ -6,12 +6,14 @@ using Pragmatic.Models;
 using Pragmatic.Configuration;
 using System.Security.Cryptography;
 using System.Text;
-
+using Pragmatic.Helpers;
+using static Pragmatic.Helpers.PragmaticEndpoints;
 
 namespace Pragmatic.Pragmatic.Features.User.CreateUser
 {
     internal sealed class Endpoint(
-        Serilog.ILogger logger, IOptions<PragmaticApiSettings> settings) : Endpoint<Request, Response>
+        Serilog.ILogger logger,
+        IOptions<PragmaticApiSettings> settings) : Endpoint<Request, Response>
     {
         public override void Configure()
         {
@@ -26,7 +28,8 @@ namespace Pragmatic.Pragmatic.Features.User.CreateUser
             try
             {
                 var httpClient = Resolve<HttpClient>();
-                string apiUrl = settings.Value.GetCreateUserUrl;
+               
+                string apiUrl = $"{settings.Value.BaseUrl}{PragmaticEndpoint.GetCreateUserUrl.GetPath()}";
                 string secretKey = settings.Value.SecretKey;
 
                 logger.Information("Sending request to Pragmatic API: {Url}", apiUrl);
@@ -78,20 +81,20 @@ namespace Pragmatic.Pragmatic.Features.User.CreateUser
                     else
                     {
                         response.IsSuccess = false;
-                        response.Message = parsed?.description ?? "Failed to fetch create user account.";
+                        response.Message = parsed?.description ?? "Failed to create user account.";
                         response.Result = null;
                     }
                 }
                 else
                 {
                     response.IsSuccess = false;
-                    response.Message = $"Failed to fetch create account. Status code: {apiResponse.StatusCode}";
+                    response.Message = $"Failed to create account. Status code: {apiResponse.StatusCode}";
                     response.Result = null;
                 }
             }
             catch (Exception ex)
             {
-                logger.Error(ex, "Error fetching create account from Pragmatic API.");
+                logger.Error(ex, "Error creating account via Pragmatic API.");
                 response.IsSuccess = false;
                 response.Message = "Internal error occurred while calling Pragmatic API.";
                 response.Result = null;

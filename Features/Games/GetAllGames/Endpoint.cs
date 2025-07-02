@@ -4,6 +4,8 @@ using Serilog;
 using System.Net.Http;
 using Pragmatic.Models;
 using Pragmatic.Configuration;
+using Pragmatic.Helpers;
+using static Pragmatic.Helpers.PragmaticEndpoints;
 
 namespace Pragmatic.Pragmatic.Features.Games.GetAllGames
 {
@@ -23,8 +25,8 @@ namespace Pragmatic.Pragmatic.Features.Games.GetAllGames
 
             try
             {
-                var httpClient = Resolve<HttpClient>();
-                string apiUrl = settings.Value.GetAllGames;
+                var httpClient = Resolve<HttpClient>();                
+                string apiUrl = $"{settings.Value.BaseUrl}{PragmaticEndpoint.GetAllGames.GetPath()}";
 
                 logger.Information("Sending request to Pragmatic API: {Url}", apiUrl);
 
