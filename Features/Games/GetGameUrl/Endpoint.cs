@@ -38,12 +38,15 @@ namespace Pragmatic.Pragmatic.Features.Games.GetGameUrl
                 {
                     { "secureLogin", r.SecureLogin },
                     { "symbol", r.Symbol },
+                    { "stylename", r.StyleName },
                     { "language", r.Language },
                     { "currency", r.Currency },
                     { "platform", r.Platform },
                     { "playMode", r.PlayMode },
                     { "lobbyUrl", r.LobbyUrl },
-                    { "externalPlayerId", r.ExternalPlayerId }
+                    { "cashierUrl", r.CashierUrl },
+                    { "externalPlayerId", r.ExternalPlayerId },
+                    { "token", r.Token}
                 };
 
                 // Build sorted query string

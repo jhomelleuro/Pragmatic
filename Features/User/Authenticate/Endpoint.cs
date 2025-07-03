@@ -67,7 +67,7 @@ namespace Pragmatic.Pragmatic.Features.User.Authenticate
                 {
                     dynamic parsed = JsonConvert.DeserializeObject<dynamic>(responseBody);
 
-                    if (parsed?.error == "0")
+                    if (parsed?.authenticate?.error == 0)
                     {
                         response.IsSuccess = true;
                         response.Message = "User authenticated successfully.";
