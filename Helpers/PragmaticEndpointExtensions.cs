@@ -12,7 +12,9 @@ namespace Pragmatic.Helpers
                 PragmaticEndpoint.GetLobbyGames => "getLobbyGames/",
                 PragmaticEndpoint.GetAllGames => "getCasinoGames/",
                 PragmaticEndpoint.GetCreateUserUrl => "player/account/create/",
-                PragmaticEndpoint.GetAuthenticateUrl => "authenticate.html",
+                PragmaticEndpoint.GetAuthenticateUrl => "authenticate",
+                PragmaticEndpoint.GetBalanceUrl => "balance",
+                PragmaticEndpoint.GetBetUrl => "bet",
                 _ => throw new ArgumentOutOfRangeException(nameof(endpoint), endpoint, null)
             };
         }

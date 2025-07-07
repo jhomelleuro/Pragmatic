@@ -6,14 +6,14 @@ using System.Text;
 using Pragmatic.Helpers;
 using static Pragmatic.Helpers.PragmaticEndpoints;
 
-namespace Pragmatic.Pragmatic.Features.User.Authenticate
+namespace Pragmatic.Pragmatic.Features.User.Bet
 {
     internal sealed class Endpoint(
         Serilog.ILogger logger, IOptions<PragmaticApiSettings> settings) : Endpoint<Request, Response>
     {
         public override void Configure()
         {
-            Post("/user/pragmatic/authenticate");
+            Post("/user/pragmatic/bet");
             AllowAnonymous();
         }
 
@@ -24,26 +24,30 @@ namespace Pragmatic.Pragmatic.Features.User.Authenticate
             try
             {
                 var httpClient = Resolve<HttpClient>();
-                
-                string apiUrl = $"{settings.Value.UserBaseURL}{PragmaticEndpoint.GetAuthenticateUrl.GetPath()}";
+
+                string apiUrl = $"{settings.Value.BaseUrl}{PragmaticEndpoint.GetBetUrl.GetPath()}";
                 string secretKey = settings.Value.SecretKey;
 
-                logger.Information("Sending request to Pragmatic API: {Url}", apiUrl);
+                logger.Information("Sending request to Pragmatic API (Bet): {Url}", apiUrl);
 
                 var formData = new Dictionary<string, string>
                 {
                     { "providerId", r.ProviderId },
-                    { "token", r.Token },
+                    { "userId", r.UserId },
+                    { "gameId", r.GameId },
+                    { "roundId", r.RoundId },
+                    { "amount", r.Amount.ToString("F2", System.Globalization.CultureInfo.InvariantCulture) },
+                    { "reference", r.Reference },
+                    { "timestamp", r.Timestamp.ToString() },
+                    { "roundDetails", r.RoundDetails }
                 };
 
-                // Build sorted query string
+                // Sort and generate hash
                 var sorted = formData.OrderBy(x => x.Key, StringComparer.Ordinal);
                 var queryString = string.Join("&", sorted.Select(kv => $"{kv.Key}={kv.Value}"));
 
-                // Append secret key
                 var stringToHash = queryString + secretKey;
 
-                // Compute MD5 hash
                 string hash;
                 using (var md5 = MD5.Create())
                 {
@@ -67,29 +71,29 @@ namespace Pragmatic.Pragmatic.Features.User.Authenticate
                 {
                     dynamic parsed = JsonConvert.DeserializeObject<dynamic>(responseBody);
 
-                    if (parsed?.authenticate?.error == 0)
+                    if (parsed?.error == 0)
                     {
                         response.IsSuccess = true;
-                        response.Message = "User authenticated successfully.";
+                        response.Message = "Bet placed successfully.";
                         response.Result = parsed;
                     }
                     else
                     {
                         response.IsSuccess = false;
-                        response.Message = parsed?.description ?? "Failed to authenticate user.";
-                        response.Result = null;
+                        response.Message = parsed?.description ?? "Failed to place bet.";
+                        response.Result = parsed;
                     }
                 }
                 else
                 {
                     response.IsSuccess = false;
-                    response.Message = $"Failed to authenticate user. Status code: {apiResponse.StatusCode}";
+                    response.Message = $"Failed to place bet. Status code: {apiResponse.StatusCode}";
                     response.Result = null;
                 }
             }
             catch (Exception ex)
             {
-                logger.Error(ex, "Error authenticating user via Pragmatic API.");
+                logger.Error(ex, "Error placing bet via Pragmatic API.");
                 response.IsSuccess = false;
                 response.Message = "Internal error occurred while calling Pragmatic API.";
                 response.Result = null;

@@ -8,7 +8,9 @@
             GetLobbyGames,
             GetAllGames,
             GetCreateUserUrl,
-            GetAuthenticateUrl
+            GetAuthenticateUrl,
+            GetBalanceUrl,
+            GetBetUrl
         }
     }
 }

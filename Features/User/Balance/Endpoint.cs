@@ -1,21 +1,19 @@
 ﻿using Microsoft.Extensions.Options;
 using Newtonsoft.Json;
-using Serilog;
-using System.Net.Http;
-using Pragmatic.Models;
 using Pragmatic.Configuration;
+using System.Security.Cryptography;
+using System.Text;
 using Pragmatic.Helpers;
 using static Pragmatic.Helpers.PragmaticEndpoints;
 
-namespace Pragmatic.Pragmatic.Features.Games.GetLobbyGames
+namespace Pragmatic.Pragmatic.Features.User.Balance
 {
     internal sealed class Endpoint(
-        Serilog.ILogger logger,
-        IOptions<PragmaticApiSettings> settings) : Endpoint<Request, Response>
+        Serilog.ILogger logger, IOptions<PragmaticApiSettings> settings) : Endpoint<Request, Response>
     {
         public override void Configure()
         {
-            Post("/games/pragmatic/get-lobby-games");
+            Post("/user/pragmatic/balance");
             AllowAnonymous();
         }
 
@@ -25,20 +23,38 @@ namespace Pragmatic.Pragmatic.Features.Games.GetLobbyGames
 
             try
             {
-                var httpClient = Resolve<HttpClient>();                
-                string apiUrl = $"{settings.Value.BaseUrl}{PragmaticEndpoint.GetLobbyGames.GetPath()}";
+                var httpClient = Resolve<HttpClient>();
+                
+                string apiUrl = $"{settings.Value.UserBaseURL}{PragmaticEndpoint.GetBalanceUrl.GetPath()}";
+                string secretKey = settings.Value.SecretKey;
 
-                logger.Information("Sending request to Pragmatic API: {Url}", apiUrl);
+                logger.Information("Sending request to Pragmatic API (Balance): {Url}", apiUrl);
 
                 var formData = new Dictionary<string, string>
                 {
-                    { "secureLogin", r.SecureLogin },
-                    { "categories", r.Categories },
-                    { "hash", r.Hash }
+                    { "providerId", r.ProviderId },
+                    { "userId", r.UserId }
                 };
 
-                var content = new FormUrlEncodedContent(formData);
+                // Build sorted query string for hash generation
+                var sorted = formData.OrderBy(x => x.Key, StringComparer.Ordinal);
+                var queryString = string.Join("&", sorted.Select(kv => $"{kv.Key}={kv.Value}"));
 
+                var stringToHash = queryString + secretKey;
+
+                string hash;
+                using (var md5 = MD5.Create())
+                {
+                    var inputBytes = Encoding.UTF8.GetBytes(stringToHash);
+                    var hashBytes = md5.ComputeHash(inputBytes);
+                    hash = Convert.ToHexString(hashBytes).ToLower();
+                }
+
+                logger.Information("Generated hash: {Hash}", hash);
+
+                formData.Add("hash", hash);
+
+                var content = new FormUrlEncodedContent(formData);
                 var apiResponse = await httpClient.PostAsync(apiUrl, content, ct);
                 var responseBody = await apiResponse.Content.ReadAsStringAsync(ct);
 
@@ -61,18 +77,17 @@ namespace Pragmatic.Pragmatic.Features.Games.GetLobbyGames
                         response.Message = parsed?.balance?.description ?? "Failed to get balance.";
                         response.Result = parsed;
                     }
-
                 }
                 else
                 {
                     response.IsSuccess = false;
-                    response.Message = $"Failed to fetch games. Status code: {apiResponse.StatusCode}";
+                    response.Message = $"Failed to get balance. Status code: {apiResponse.StatusCode}";
                     response.Result = null;
                 }
             }
             catch (Exception ex)
             {
-                logger.Error(ex, "Error fetching games from Pragmatic API.");
+                logger.Error(ex, "Error fetching balance from Pragmatic API.");
                 response.IsSuccess = false;
                 response.Message = "Internal error occurred while calling Pragmatic API.";
                 response.Result = null;

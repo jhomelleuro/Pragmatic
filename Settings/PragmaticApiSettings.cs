@@ -4,5 +4,6 @@
     {
         public string BaseUrl { get; set; }
         public string SecretKey { get; set; }
+        public string UserBaseURL { get; set; }
     }
 }
