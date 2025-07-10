@@ -1,23 +1,19 @@
 ﻿using Microsoft.Extensions.Options;
 using Newtonsoft.Json;
-using Serilog;
-using System.Net.Http;
-using Pragmatic.Models;
 using Pragmatic.Configuration;
 using System.Security.Cryptography;
 using System.Text;
 using Pragmatic.Helpers;
 using static Pragmatic.Helpers.PragmaticEndpoints;
 
-namespace Pragmatic.Pragmatic.Features.User.CreateUser
+namespace Pragmatic.Pragmatic.Features.User.BonusWin
 {
     internal sealed class Endpoint(
-        Serilog.ILogger logger,
-        IOptions<PragmaticApiSettings> settings) : Endpoint<Request, Response>
+        Serilog.ILogger logger, IOptions<PragmaticApiSettings> settings) : Endpoint<Request, Response>
     {
         public override void Configure()
         {
-            Post("/user/pragmatic/create-user");
+            Post("/user/pragmatic/bonusWin");
             AllowAnonymous();
         }
 
@@ -28,27 +24,42 @@ namespace Pragmatic.Pragmatic.Features.User.CreateUser
             try
             {
                 var httpClient = Resolve<HttpClient>();
-               
-                string apiUrl = $"{settings.Value.UserBaseURL}{PragmaticEndpoint.GetCreateUserUrl.GetPath()}";
+
+                string apiUrl = $"{settings.Value.BaseUrl}{PragmaticEndpoint.BonusWinUrl.GetPath()}";
                 string secretKey = settings.Value.SecretKey;
 
-                logger.Information("Sending request to Pragmatic API: {Url}", apiUrl);
+                logger.Information("Sending request to Pragmatic API (BonusWin): {Url}", apiUrl);
 
                 var formData = new Dictionary<string, string>
                 {
-                    { "secureLogin", r.SecureLogin },
-                    { "currency", r.Currency },
-                    { "externalPlayerId", r.ExternalPlayerId }
+                    { "providerId", r.ProviderId },
+                    { "userId", r.UserId },
+                    { "amount", r.Amount.ToString("F2", System.Globalization.CultureInfo.InvariantCulture) },
+                    { "reference", r.Reference },
+                    { "bonusCode", r.BonusCode },
+                    { "timestamp", r.Timestamp.ToString() }
                 };
 
-                // Build sorted query string
+                if (!string.IsNullOrEmpty(r.RoundId))
+                    formData.Add("roundId", r.RoundId);
+
+                if (!string.IsNullOrEmpty(r.GameId))
+                    formData.Add("gameId", r.GameId);
+
+                if (!string.IsNullOrEmpty(r.Token))
+                    formData.Add("token", r.Token);
+
+                if (!string.IsNullOrEmpty(r.RequestId))
+                    formData.Add("requestId", r.RequestId);
+
+                if (r.RemainAmount.HasValue)
+                    formData.Add("remainAmount", r.RemainAmount.Value.ToString());
+
+                // Sort & generate hash
                 var sorted = formData.OrderBy(x => x.Key, StringComparer.Ordinal);
                 var queryString = string.Join("&", sorted.Select(kv => $"{kv.Key}={kv.Value}"));
-
-                // Append secret key
                 var stringToHash = queryString + secretKey;
 
-                // Compute MD5 hash
                 string hash;
                 using (var md5 = MD5.Create())
                 {
@@ -58,7 +69,6 @@ namespace Pragmatic.Pragmatic.Features.User.CreateUser
                 }
 
                 logger.Information("Generated hash: {Hash}", hash);
-
                 formData.Add("hash", hash);
 
                 var content = new FormUrlEncodedContent(formData);
@@ -70,31 +80,31 @@ namespace Pragmatic.Pragmatic.Features.User.CreateUser
 
                 if (apiResponse.IsSuccessStatusCode)
                 {
-                    dynamic parsed = JsonConvert.DeserializeObject<dynamic>(responseBody);
+                    var parsed = JsonConvert.DeserializeObject<dynamic>(responseBody);
 
-                    if (parsed?.error == "0")
+                    if (parsed?.error == 0)
                     {
                         response.IsSuccess = true;
-                        response.Message = "User Account Created Successfully.";
+                        response.Message = "Bonus win processed successfully.";
                         response.Result = parsed;
                     }
                     else
                     {
                         response.IsSuccess = false;
-                        response.Message = parsed?.description ?? "Failed to create user account.";
-                        response.Result = null;
+                        response.Message = parsed?.description ?? "Failed to process bonus win.";
+                        response.Result = parsed;
                     }
                 }
                 else
                 {
                     response.IsSuccess = false;
-                    response.Message = $"Failed to create account. Status code: {apiResponse.StatusCode}";
+                    response.Message = $"Failed to process bonus win. Status code: {apiResponse.StatusCode}";
                     response.Result = null;
                 }
             }
             catch (Exception ex)
             {
-                logger.Error(ex, "Error creating account via Pragmatic API.");
+                logger.Error(ex, "Error processing bonus win via Pragmatic API.");
                 response.IsSuccess = false;
                 response.Message = "Internal error occurred while calling Pragmatic API.";
                 response.Result = null;

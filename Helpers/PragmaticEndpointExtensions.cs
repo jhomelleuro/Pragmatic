@@ -15,6 +15,9 @@ namespace Pragmatic.Helpers
                 PragmaticEndpoint.GetAuthenticateUrl => "authenticate",
                 PragmaticEndpoint.GetBalanceUrl => "balance",
                 PragmaticEndpoint.GetBetUrl => "bet",
+                PragmaticEndpoint.ResultUrl => "result",
+                PragmaticEndpoint.BonusWinUrl => "bonusWin",
+                PragmaticEndpoint.JackpotWinUrl => "jackpotWin",
                 _ => throw new ArgumentOutOfRangeException(nameof(endpoint), endpoint, null)
             };
         }

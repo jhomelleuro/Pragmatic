@@ -10,7 +10,10 @@
             GetCreateUserUrl,
             GetAuthenticateUrl,
             GetBalanceUrl,
-            GetBetUrl
+            GetBetUrl,
+            ResultUrl,
+            BonusWinUrl,
+            JackpotWinUrl
         }
     }
 }

@@ -25,7 +25,7 @@ namespace Pragmatic.Pragmatic.Features.User.Bet
             {
                 var httpClient = Resolve<HttpClient>();
 
-                string apiUrl = $"{settings.Value.BaseUrl}{PragmaticEndpoint.GetBetUrl.GetPath()}";
+                string apiUrl = $"{settings.Value.UserBaseURL}{PragmaticEndpoint.GetBetUrl.GetPath()}";
                 string secretKey = settings.Value.SecretKey;
 
                 logger.Information("Sending request to Pragmatic API (Bet): {Url}", apiUrl);
