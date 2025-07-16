@@ -18,6 +18,13 @@ namespace Pragmatic.Helpers
                 PragmaticEndpoint.ResultUrl => "result",
                 PragmaticEndpoint.BonusWinUrl => "bonusWin",
                 PragmaticEndpoint.JackpotWinUrl => "jackpotWin",
+                PragmaticEndpoint.EndRoundUrl => "endRound",
+                PragmaticEndpoint.RefundUrl => "refund",
+                PragmaticEndpoint.GetBalancePerGameUrl => "getBalancePerGame",
+                PragmaticEndpoint.PromoWinUrl => "promoWin",
+                PragmaticEndpoint.SessionExpiredUrl => "session/expired", //NOT SURE
+                PragmaticEndpoint.AdjustmentUrl => "adjustment",
+                PragmaticEndpoint.RoundDetailsUrl => "roundDetails",
                 _ => throw new ArgumentOutOfRangeException(nameof(endpoint), endpoint, null)
             };
         }

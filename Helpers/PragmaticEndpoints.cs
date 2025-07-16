@@ -13,7 +13,14 @@
             GetBetUrl,
             ResultUrl,
             BonusWinUrl,
-            JackpotWinUrl
+            JackpotWinUrl,
+            EndRoundUrl,
+            RefundUrl,
+            GetBalancePerGameUrl,
+            PromoWinUrl,
+            SessionExpiredUrl,
+            AdjustmentUrl,
+            RoundDetailsUrl
         }
     }
 }
