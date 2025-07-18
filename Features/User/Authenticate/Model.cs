@@ -6,9 +6,12 @@ namespace Pragmatic.Pragmatic.Features.User.Authenticate
     internal sealed class Request
     {
         public string ProviderId { get; set; } = "euexs_euroeximsw";
+
         public string Token { get; set; } = "7189058";
 
-    }
+        public string UserId { get; set; } = "7190864";
+
+    } 
 
     internal sealed class Validator : FluentValidation.AbstractValidator<Request>
     {
@@ -19,7 +22,7 @@ namespace Pragmatic.Pragmatic.Features.User.Authenticate
 
         }
     }
-    internal sealed class Response : ResponseModel<object?>
+    internal sealed class Response : UserResponseModel<object?>
     {
     }
 }

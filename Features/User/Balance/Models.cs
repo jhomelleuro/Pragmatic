@@ -6,6 +6,7 @@ namespace Pragmatic.Pragmatic.Features.User.Balance
     internal sealed class Request
     {
         public string ProviderId { get; set; } = "euexs_euroeximsw";
+        public string Token { get; set; } = "213131";
         public string UserId { get; set; } = "421";
     }
 

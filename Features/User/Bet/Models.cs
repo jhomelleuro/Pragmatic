@@ -6,6 +6,7 @@ namespace Pragmatic.Pragmatic.Features.User.Bet
     internal sealed class Request
     {
         public string ProviderId { get; set; } = "euexs_euroeximsw";
+        public string Token { get; set; } = "21312";
         public string UserId { get; set; } = "421";
         public string GameId { get; set; } = "vs50aladdin";
         public string RoundId { get; set; } = "5103188801";

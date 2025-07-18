@@ -5,6 +5,7 @@ using System.Security.Cryptography;
 using System.Text;
 using Pragmatic.Helpers;
 using static Pragmatic.Helpers.PragmaticEndpoints;
+using System.Net.Http.Headers;
 
 namespace Pragmatic.Pragmatic.Features.User.Balance
 {
@@ -30,13 +31,11 @@ namespace Pragmatic.Pragmatic.Features.User.Balance
 
                 logger.Information("Sending request to Pragmatic API (Balance): {Url}", apiUrl);
 
-                var formData = new Dictionary<string, string>
-                {
-                    { "providerId", r.ProviderId },
-                    { "userId", r.UserId }
-                };
+                var formData = new Dictionary<string, string>();
 
-                // Build sorted query string for hash generation
+                string token = r.Token;
+                formData.Add("token", token);
+
                 var sorted = formData.OrderBy(x => x.Key, StringComparer.Ordinal);
                 var queryString = string.Join("&", sorted.Select(kv => $"{kv.Key}={kv.Value}"));
 
@@ -52,24 +51,29 @@ namespace Pragmatic.Pragmatic.Features.User.Balance
 
                 logger.Information("Generated hash: {Hash}", hash);
 
-                formData.Add("hash", hash);
+                formData["hash"] = hash;
 
                 var content = new FormUrlEncodedContent(formData);
+
+                httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
                 var apiResponse = await httpClient.PostAsync(apiUrl, content, ct);
                 var responseBody = await apiResponse.Content.ReadAsStringAsync(ct);
 
-                logger.Information("Pragmatic API Status: {StatusCode}", apiResponse.StatusCode);
+
+                logger.Information("Pragmatic API Status: {StatusCode}", apiResponse.StatusCode, apiResponse.IsSuccessStatusCode);
                 logger.Information("Pragmatic API Response: {Body}", responseBody);
 
                 if (apiResponse.IsSuccessStatusCode)
                 {
                     dynamic parsed = JsonConvert.DeserializeObject<dynamic>(responseBody);
 
-                    if (parsed?.balance?.error == 0)
+                    string parsedJson = JsonConvert.SerializeObject(parsed, Formatting.Indented);
+                    logger.Information("Parsed JSON:\n{Parsed}", parsedJson);
+                    if (parsed?.description == "Success")
                     {
-                        response.IsSuccess = true;
-                        response.Message = "Balance fetched successfully.";
-                        response.Result = parsed;
+                        await SendStringAsync(responseBody, contentType: "application/json", cancellation: ct);
+                        return;
                     }
                     else
                     {
@@ -91,10 +95,6 @@ namespace Pragmatic.Pragmatic.Features.User.Balance
                 response.IsSuccess = false;
                 response.Message = "Internal error occurred while calling Pragmatic API.";
                 response.Result = null;
-            }
-            finally
-            {
-                await SendAsync(response, cancellation: ct);
             }
         }
     }

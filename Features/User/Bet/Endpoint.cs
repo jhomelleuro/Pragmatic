@@ -5,6 +5,7 @@ using System.Security.Cryptography;
 using System.Text;
 using Pragmatic.Helpers;
 using static Pragmatic.Helpers.PragmaticEndpoints;
+using System.Net.Http.Headers;
 
 namespace Pragmatic.Pragmatic.Features.User.Bet
 {
@@ -30,19 +31,13 @@ namespace Pragmatic.Pragmatic.Features.User.Bet
 
                 logger.Information("Sending request to Pragmatic API (Bet): {Url}", apiUrl);
 
-                var formData = new Dictionary<string, string>
-                {
-                    { "providerId", r.ProviderId },
-                    { "userId", r.UserId },
-                    { "gameId", r.GameId },
-                    { "roundId", r.RoundId },
-                    { "amount", r.Amount.ToString("F2", System.Globalization.CultureInfo.InvariantCulture) },
-                    { "reference", r.Reference },
-                    { "timestamp", r.Timestamp.ToString() },
-                    { "roundDetails", r.RoundDetails }
-                };
 
-                // Sort and generate hash
+                var formData = new Dictionary<string, string>();
+
+                string token = r.Token;
+                formData.Add("token", token);
+                formData.Add("amount", r.Amount.ToString("F2", System.Globalization.CultureInfo.InvariantCulture));
+
                 var sorted = formData.OrderBy(x => x.Key, StringComparer.Ordinal);
                 var queryString = string.Join("&", sorted.Select(kv => $"{kv.Key}={kv.Value}"));
 
@@ -58,24 +53,30 @@ namespace Pragmatic.Pragmatic.Features.User.Bet
 
                 logger.Information("Generated hash: {Hash}", hash);
 
-                formData.Add("hash", hash);
+                formData["hash"] = hash;
 
                 var content = new FormUrlEncodedContent(formData);
+
+                httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
                 var apiResponse = await httpClient.PostAsync(apiUrl, content, ct);
                 var responseBody = await apiResponse.Content.ReadAsStringAsync(ct);
 
-                logger.Information("Pragmatic API Status: {StatusCode}", apiResponse.StatusCode);
+
+                logger.Information("Pragmatic API Status: {StatusCode}", apiResponse.StatusCode, apiResponse.IsSuccessStatusCode);
                 logger.Information("Pragmatic API Response: {Body}", responseBody);
 
                 if (apiResponse.IsSuccessStatusCode)
                 {
                     dynamic parsed = JsonConvert.DeserializeObject<dynamic>(responseBody);
 
-                    if (parsed?.error == 0)
+                    string parsedJson = JsonConvert.SerializeObject(parsed, Formatting.Indented);
+                    logger.Information("Parsed JSON:\n{Parsed}", parsedJson);
+
+                    if (parsed?.transactionId != null)
                     {
-                        response.IsSuccess = true;
-                        response.Message = "Bet placed successfully.";
-                        response.Result = parsed;
+                        await SendStringAsync(responseBody, contentType: "application/json", cancellation: ct);
+                        return;
                     }
                     else
                     {
@@ -97,10 +98,6 @@ namespace Pragmatic.Pragmatic.Features.User.Bet
                 response.IsSuccess = false;
                 response.Message = "Internal error occurred while calling Pragmatic API.";
                 response.Result = null;
-            }
-            finally
-            {
-                await SendAsync(response, cancellation: ct);
             }
         }
     }
