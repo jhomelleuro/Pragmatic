@@ -16,6 +16,7 @@ namespace Pragmatic.Pragmatic.Features.User.Balance
         {
             RuleFor(x => x.ProviderId).NotEmpty();
             RuleFor(x => x.UserId).NotEmpty();
+            RuleFor(x => x.Token).NotEmpty();
         }
     }
 

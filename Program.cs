@@ -70,7 +70,8 @@ app.UseHealthChecks("/_health", new Microsoft.AspNetCore.Diagnostics.HealthCheck
 // FastEndpoints Configuration
 var settings = new JsonSerializerSettings
 {
-    ContractResolver = new PascalCasePropertyNamesContractResolver(),
+    ContractResolver = new Newtonsoft.Json.Serialization.CamelCasePropertyNamesContractResolver(),
+
 };
 
 app.UseFastEndpoints(c =>

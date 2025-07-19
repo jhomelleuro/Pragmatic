@@ -1,16 +1,18 @@
 ﻿using Microsoft.Extensions.Options;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using Pragmatic.Configuration;
+using Pragmatic.Helpers;
+using System.Net.Http.Headers;
 using System.Security.Cryptography;
 using System.Text;
-using Pragmatic.Helpers;
 using static Pragmatic.Helpers.PragmaticEndpoints;
-using System.Net.Http.Headers;
 
 namespace Pragmatic.Pragmatic.Features.User.Balance
 {
     internal sealed class Endpoint(
-        Serilog.ILogger logger, IOptions<PragmaticApiSettings> settings) : Endpoint<Request, Response>
+        Serilog.ILogger logger,
+        IOptions<PragmaticApiSettings> settings) : Endpoint<Request>
     {
         public override void Configure()
         {
@@ -20,81 +22,86 @@ namespace Pragmatic.Pragmatic.Features.User.Balance
 
         public override async Task HandleAsync(Request r, CancellationToken ct)
         {
-            var response = new Response();
-
             try
             {
                 var httpClient = Resolve<HttpClient>();
-                
+
                 string apiUrl = $"{settings.Value.UserBaseURL}{PragmaticEndpoint.GetBalanceUrl.GetPath()}";
                 string secretKey = settings.Value.SecretKey;
 
                 logger.Information("Sending request to Pragmatic API (Balance): {Url}", apiUrl);
 
-                var formData = new Dictionary<string, string>();
+                var formData = new Dictionary<string, string>
+                {
+                    { "token", r.Token }
+                };
 
-                string token = r.Token;
-                formData.Add("token", token);
-
+                // Sort and hash
                 var sorted = formData.OrderBy(x => x.Key, StringComparer.Ordinal);
                 var queryString = string.Join("&", sorted.Select(kv => $"{kv.Key}={kv.Value}"));
-
                 var stringToHash = queryString + secretKey;
 
-                string hash;
-                using (var md5 = MD5.Create())
-                {
-                    var inputBytes = Encoding.UTF8.GetBytes(stringToHash);
-                    var hashBytes = md5.ComputeHash(inputBytes);
-                    hash = Convert.ToHexString(hashBytes).ToLower();
-                }
+                using var md5 = MD5.Create();
+                string hash = Convert.ToHexString(md5.ComputeHash(Encoding.UTF8.GetBytes(stringToHash))).ToLower();
+                formData["hash"] = hash;
 
                 logger.Information("Generated hash: {Hash}", hash);
 
-                formData["hash"] = hash;
-
                 var content = new FormUrlEncodedContent(formData);
-
-                httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+                httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", r.Token);
 
                 var apiResponse = await httpClient.PostAsync(apiUrl, content, ct);
                 var responseBody = await apiResponse.Content.ReadAsStringAsync(ct);
 
-
-                logger.Information("Pragmatic API Status: {StatusCode}", apiResponse.StatusCode, apiResponse.IsSuccessStatusCode);
+                logger.Information("Pragmatic API Status: {StatusCode}", apiResponse.StatusCode);
                 logger.Information("Pragmatic API Response: {Body}", responseBody);
 
-                if (apiResponse.IsSuccessStatusCode)
+                if (!apiResponse.IsSuccessStatusCode)
                 {
-                    dynamic parsed = JsonConvert.DeserializeObject<dynamic>(responseBody);
+                    await SendAsync(new
+                    {
+                        error = (int)apiResponse.StatusCode,
+                        description = "Failed to fetch balance"
+                    }, statusCode: (int)apiResponse.StatusCode, cancellation: ct);
+                    return;
+                }
 
-                    string parsedJson = JsonConvert.SerializeObject(parsed, Formatting.Indented);
-                    logger.Information("Parsed JSON:\n{Parsed}", parsedJson);
-                    if (parsed?.description == "Success")
-                    {
-                        await SendStringAsync(responseBody, contentType: "application/json", cancellation: ct);
-                        return;
-                    }
-                    else
-                    {
-                        response.IsSuccess = false;
-                        response.Message = parsed?.balance?.description ?? "Failed to get balance.";
-                        response.Result = parsed;
-                    }
-                }
-                else
+                var parsed = JsonConvert.DeserializeObject<JObject>(responseBody);
+
+                if (parsed == null)
                 {
-                    response.IsSuccess = false;
-                    response.Message = $"Failed to get balance. Status code: {apiResponse.StatusCode}";
-                    response.Result = null;
+                    await SendAsync(new
+                    {
+                        error = 502,
+                        description = "Invalid response from Pragmatic API"
+                    }, statusCode: 502, cancellation: ct);
+                    return;
                 }
+
+                int errorCode = parsed["error"]?.ToObject<int>() ?? -1;
+                string description = parsed["description"]?.ToString() ?? "Unknown error";
+
+                if (errorCode != 0)
+                {
+                    await SendAsync(new
+                    {
+                        error = errorCode,
+                        description = description
+                    }, statusCode: 400, cancellation: ct);
+                    return;
+                }
+
+                // ✅ Success
+                await SendAsync(parsed, cancellation: ct);
             }
             catch (Exception ex)
             {
                 logger.Error(ex, "Error fetching balance from Pragmatic API.");
-                response.IsSuccess = false;
-                response.Message = "Internal error occurred while calling Pragmatic API.";
-                response.Result = null;
+                await SendAsync(new
+                {
+                    error = 500,
+                    description = "Internal error occurred while calling Pragmatic API."
+                }, statusCode: 500, cancellation: ct);
             }
         }
     }

@@ -1,28 +1,28 @@
-﻿using FluentValidation;
-using Pragmatic.Models;
+﻿using Newtonsoft.Json;
 
 namespace Pragmatic.Pragmatic.Features.User.Authenticate
 {
-    internal sealed class Request
+    public class Model
     {
-        public string ProviderId { get; set; } = "euexs_euroeximsw";
+        [JsonProperty("userId")]
+        public string UserId { get; set; }
 
-        public string Token { get; set; } = "7189058";
+        [JsonProperty("currency")]
+        public string Currency { get; set; }
 
-        public string UserId { get; set; } = "7190864";
+        [JsonProperty("cash")]
+        public decimal Cash { get; set; }
 
-    } 
+        [JsonProperty("country")]
+        public string Country { get; set; }
 
-    internal sealed class Validator : FluentValidation.AbstractValidator<Request>
-    {
-        public Validator()
-        {
-            RuleFor(x => x.ProviderId).NotEmpty();
-            RuleFor(x => x.Token).NotEmpty();
+        [JsonProperty("jurisdiction")]
+        public string Jurisdiction { get; set; }
 
-        }
-    }
-    internal sealed class Response : UserResponseModel<object?>
-    {
+        [JsonProperty("description")]
+        public string Description { get; set; }
+
+        [JsonProperty("error")]
+        public int Error { get; set; }
     }
 }
