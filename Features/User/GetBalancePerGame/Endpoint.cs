@@ -9,7 +9,8 @@ using static Pragmatic.Helpers.PragmaticEndpoints;
 namespace Pragmatic.Pragmatic.Features.User.GetBalancePerGame
 {
     internal sealed class Endpoint(
-        Serilog.ILogger logger, IOptions<PragmaticApiSettings> settings) : Endpoint<Request, Response>
+        Serilog.ILogger logger,
+        IOptions<PragmaticApiSettings> settings) : EndpointWithoutRequest<object>
     {
         public override void Configure()
         {
@@ -17,12 +18,44 @@ namespace Pragmatic.Pragmatic.Features.User.GetBalancePerGame
             AllowAnonymous();
         }
 
-        public override async Task HandleAsync(Request r, CancellationToken ct)
+        public override async Task HandleAsync(CancellationToken ct)
         {
-            var response = new Response();
-
             try
             {
+                if (!HttpContext.Request.HasFormContentType)
+                {
+                    await SendAsync(new
+                    {
+                        error = 400,
+                        description = "Only form-urlencoded content is supported"
+                    }, 400, ct);
+                    return;
+                }
+
+                var form = await HttpContext.Request.ReadFormAsync(ct);
+
+                var r = new Request
+                {
+                    ProviderId = form["providerId"],
+                    UserId = form["userId"],
+                    GameIdList = form["gameIdList"],
+                    Token = form["token"],
+                    Platform = form["platform"]
+                };
+
+                var validator = new Validator();
+                var validationResult = validator.Validate(r);
+
+                if (!validationResult.IsValid)
+                {
+                    await SendAsync(new
+                    {
+                        error = 400,
+                        description = string.Join("; ", validationResult.Errors.Select(e => e.ErrorMessage))
+                    }, 400, ct);
+                    return;
+                }
+
                 var httpClient = Resolve<HttpClient>();
 
                 string apiUrl = $"{settings.Value.BaseUrl}{PragmaticEndpoint.GetBalancePerGameUrl.GetPath()}";
@@ -37,13 +70,10 @@ namespace Pragmatic.Pragmatic.Features.User.GetBalancePerGame
                     { "gameIdList", r.GameIdList }
                 };
 
-                if (!string.IsNullOrEmpty(r.Token))
-                    formData.Add("token", r.Token);
+                if (!string.IsNullOrEmpty(r.Token)) formData.Add("token", r.Token);
+                if (!string.IsNullOrEmpty(r.Platform)) formData.Add("platform", r.Platform);
 
-                if (!string.IsNullOrEmpty(r.Platform))
-                    formData.Add("platform", r.Platform);
-
-                // Sort & generate hash
+                // Sort & hash
                 var sorted = formData.OrderBy(x => x.Key, StringComparer.Ordinal);
                 var queryString = string.Join("&", sorted.Select(kv => $"{kv.Key}={kv.Value}"));
                 var stringToHash = queryString + secretKey;
@@ -66,40 +96,18 @@ namespace Pragmatic.Pragmatic.Features.User.GetBalancePerGame
                 logger.Information("Pragmatic API Status: {StatusCode}", apiResponse.StatusCode);
                 logger.Information("Pragmatic API Response: {Body}", responseBody);
 
-                if (apiResponse.IsSuccessStatusCode)
-                {
-                    var parsed = JsonConvert.DeserializeObject<dynamic>(responseBody);
+                var parsed = JsonConvert.DeserializeObject<dynamic>(responseBody);
 
-                    if (parsed?.error == 0)
-                    {
-                        response.IsSuccess = true;
-                        response.Message = "Get balance per game processed successfully.";
-                        response.Result = parsed;
-                    }
-                    else
-                    {
-                        response.IsSuccess = false;
-                        response.Message = parsed?.description ?? "Failed to get balance per game.";
-                        response.Result = parsed;
-                    }
-                }
-                else
-                {
-                    response.IsSuccess = false;
-                    response.Message = $"Failed to get balance per game. Status code: {apiResponse.StatusCode}";
-                    response.Result = null;
-                }
+                await SendAsync(parsed, (int)apiResponse.StatusCode, ct);
             }
             catch (Exception ex)
             {
-                logger.Error(ex, "Error processing get balance per game via Pragmatic API.");
-                response.IsSuccess = false;
-                response.Message = "Internal error occurred while calling Pragmatic API.";
-                response.Result = null;
-            }
-            finally
-            {
-                await SendAsync(response, cancellation: ct);
+                logger.Error(ex, "Error processing GetBalancePerGame via Pragmatic API.");
+                await SendAsync(new
+                {
+                    error = 500,
+                    description = "Internal error occurred while calling Pragmatic API."
+                }, 500, ct);
             }
         }
     }

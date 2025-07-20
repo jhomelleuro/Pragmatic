@@ -1,15 +1,16 @@
 ﻿using Microsoft.Extensions.Options;
 using Newtonsoft.Json;
 using Pragmatic.Configuration;
+using Pragmatic.Helpers;
 using System.Security.Cryptography;
 using System.Text;
-using Pragmatic.Helpers;
 using static Pragmatic.Helpers.PragmaticEndpoints;
 
 namespace Pragmatic.Pragmatic.Features.User.Refund
 {
     internal sealed class Endpoint(
-        Serilog.ILogger logger, IOptions<PragmaticApiSettings> settings) : Endpoint<Request, Response>
+        Serilog.ILogger logger,
+        IOptions<PragmaticApiSettings> settings) : EndpointWithoutRequest
     {
         public override void Configure()
         {
@@ -17,18 +18,55 @@ namespace Pragmatic.Pragmatic.Features.User.Refund
             AllowAnonymous();
         }
 
-        public override async Task HandleAsync(Request r, CancellationToken ct)
+        public override async Task HandleAsync(CancellationToken ct)
         {
-            var response = new Response();
-
             try
             {
+                if (!HttpContext.Request.HasFormContentType)
+                {
+                    await SendAsync(new
+                    {
+                        error = 400,
+                        description = "Only form-urlencoded content is supported"
+                    }, 400, ct);
+                    return;
+                }
+
+                var form = await HttpContext.Request.ReadFormAsync(ct);
+
+                var r = new Request
+                {
+                    ProviderId = form["providerId"],
+                    UserId = form["userId"],
+                    Reference = form["reference"],
+                    Platform = form["platform"],
+                    Amount = decimal.TryParse(form["amount"], out var amt) ? amt : null,
+                    GameId = form["gameId"],
+                    RoundId = form["roundId"],
+                    Timestamp = long.TryParse(form["timestamp"], out var ts) ? ts : null,
+                    RoundDetails = form["roundDetails"],
+                    BonusCode = form["bonusCode"],
+                    Token = form["token"]
+                };
+
+                var validator = new Validator();
+                var validationResult = validator.Validate(r);
+
+                if (!validationResult.IsValid)
+                {
+                    await SendAsync(new
+                    {
+                        error = 400,
+                        description = string.Join("; ", validationResult.Errors.Select(e => e.ErrorMessage))
+                    }, 400, ct);
+                    return;
+                }
+
                 var httpClient = Resolve<HttpClient>();
+                var apiUrl = $"{settings.Value.BaseUrl}{PragmaticEndpoint.RefundUrl.GetPath()}";
+                var secretKey = settings.Value.SecretKey;
 
-                string apiUrl = $"{settings.Value.BaseUrl}{PragmaticEndpoint.RefundUrl.GetPath()}";
-                string secretKey = settings.Value.SecretKey;
-
-                logger.Information("Sending request to Pragmatic API (Refund): {Url}", apiUrl);
+                logger.Information("Sending Refund to Pragmatic API: {Url}", apiUrl);
 
                 var formData = new Dictionary<string, string>
                 {
@@ -37,87 +75,55 @@ namespace Pragmatic.Pragmatic.Features.User.Refund
                     { "reference", r.Reference }
                 };
 
-                if (!string.IsNullOrEmpty(r.Platform))
-                    formData.Add("platform", r.Platform);
+                if (!string.IsNullOrEmpty(r.Platform)) formData["platform"] = r.Platform;
+                if (r.Amount.HasValue) formData["amount"] = r.Amount.Value.ToString("F2", System.Globalization.CultureInfo.InvariantCulture);
+                if (!string.IsNullOrEmpty(r.GameId)) formData["gameId"] = r.GameId;
+                if (!string.IsNullOrEmpty(r.RoundId)) formData["roundId"] = r.RoundId;
+                if (r.Timestamp.HasValue) formData["timestamp"] = r.Timestamp.Value.ToString();
+                if (!string.IsNullOrEmpty(r.RoundDetails)) formData["roundDetails"] = r.RoundDetails;
+                if (!string.IsNullOrEmpty(r.BonusCode)) formData["bonusCode"] = r.BonusCode;
+                if (!string.IsNullOrEmpty(r.Token)) formData["token"] = r.Token;
 
-                if (r.Amount.HasValue)
-                    formData.Add("amount", r.Amount.Value.ToString("F2", System.Globalization.CultureInfo.InvariantCulture));
-
-                if (!string.IsNullOrEmpty(r.GameId))
-                    formData.Add("gameId", r.GameId);
-
-                if (!string.IsNullOrEmpty(r.RoundId))
-                    formData.Add("roundId", r.RoundId);
-
-                if (r.Timestamp.HasValue)
-                    formData.Add("timestamp", r.Timestamp.Value.ToString());
-
-                if (!string.IsNullOrEmpty(r.RoundDetails))
-                    formData.Add("roundDetails", r.RoundDetails);
-
-                if (!string.IsNullOrEmpty(r.BonusCode))
-                    formData.Add("bonusCode", r.BonusCode);
-
-                if (!string.IsNullOrEmpty(r.Token))
-                    formData.Add("token", r.Token);
-
-                // Sort & generate hash
+                // Hash
                 var sorted = formData.OrderBy(x => x.Key, StringComparer.Ordinal);
                 var queryString = string.Join("&", sorted.Select(kv => $"{kv.Key}={kv.Value}"));
                 var stringToHash = queryString + secretKey;
 
-                string hash;
-                using (var md5 = MD5.Create())
-                {
-                    var inputBytes = Encoding.UTF8.GetBytes(stringToHash);
-                    var hashBytes = md5.ComputeHash(inputBytes);
-                    hash = Convert.ToHexString(hashBytes).ToLower();
-                }
+                using var md5 = MD5.Create();
+                var hash = Convert.ToHexString(md5.ComputeHash(Encoding.UTF8.GetBytes(stringToHash))).ToLower();
+                formData["hash"] = hash;
 
                 logger.Information("Generated hash: {Hash}", hash);
-                formData.Add("hash", hash);
 
                 var content = new FormUrlEncodedContent(formData);
                 var apiResponse = await httpClient.PostAsync(apiUrl, content, ct);
                 var responseBody = await apiResponse.Content.ReadAsStringAsync(ct);
 
-                logger.Information("Pragmatic API Status: {StatusCode}", apiResponse.StatusCode);
-                logger.Information("Pragmatic API Response: {Body}", responseBody);
+                logger.Information("API Status: {StatusCode}", apiResponse.StatusCode);
+                logger.Information("API Response: {Body}", responseBody);
 
-                if (apiResponse.IsSuccessStatusCode)
-                {
-                    var parsed = JsonConvert.DeserializeObject<dynamic>(responseBody);
+                var parsed = JsonConvert.DeserializeObject<dynamic>(responseBody);
 
-                    if (parsed?.error == 0)
-                    {
-                        response.IsSuccess = true;
-                        response.Message = "Refund processed successfully.";
-                        response.Result = parsed;
-                    }
-                    else
-                    {
-                        response.IsSuccess = false;
-                        response.Message = parsed?.description ?? "Failed to process refund.";
-                        response.Result = parsed;
-                    }
-                }
-                else
+                if (!apiResponse.IsSuccessStatusCode || parsed?.error != 0)
                 {
-                    response.IsSuccess = false;
-                    response.Message = $"Failed to process refund. Status code: {apiResponse.StatusCode}";
-                    response.Result = null;
+                    await SendAsync(new
+                    {
+                        error = parsed?.error ?? (int)apiResponse.StatusCode,
+                        description = parsed?.description ?? "Failed to process refund."
+                    }, (int)apiResponse.StatusCode, ct);
+                    return;
                 }
+
+                await SendAsync(parsed, 200, ct);
             }
             catch (Exception ex)
             {
                 logger.Error(ex, "Error processing refund via Pragmatic API.");
-                response.IsSuccess = false;
-                response.Message = "Internal error occurred while calling Pragmatic API.";
-                response.Result = null;
-            }
-            finally
-            {
-                await SendAsync(response, cancellation: ct);
+                await SendAsync(new
+                {
+                    error = 500,
+                    description = "Internal error occurred while calling Pragmatic API."
+                }, 500, ct);
             }
         }
     }

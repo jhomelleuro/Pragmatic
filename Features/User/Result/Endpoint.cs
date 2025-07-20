@@ -1,15 +1,17 @@
 ﻿using Microsoft.Extensions.Options;
 using Newtonsoft.Json;
 using Pragmatic.Configuration;
+using Pragmatic.Helpers;
+using FluentValidation;
 using System.Security.Cryptography;
 using System.Text;
-using Pragmatic.Helpers;
 using static Pragmatic.Helpers.PragmaticEndpoints;
 
 namespace Pragmatic.Pragmatic.Features.User.Result
 {
     internal sealed class Endpoint(
-        Serilog.ILogger logger, IOptions<PragmaticApiSettings> settings) : Endpoint<Request, Response>
+        Serilog.ILogger logger,
+        IOptions<PragmaticApiSettings> settings) : EndpointWithoutRequest<object>
     {
         public override void Configure()
         {
@@ -17,18 +19,53 @@ namespace Pragmatic.Pragmatic.Features.User.Result
             AllowAnonymous();
         }
 
-        public override async Task HandleAsync(Request r, CancellationToken ct)
+        public override async Task HandleAsync(CancellationToken ct)
         {
-            var response = new Response();
-
             try
             {
-                var httpClient = Resolve<HttpClient>();
+                if (!HttpContext.Request.HasFormContentType)
+                {
+                    await SendAsync(new
+                    {
+                        error = 400,
+                        description = "Only form-urlencoded content is supported"
+                    }, 400, ct);
+                    return;
+                }
 
-                string apiUrl = $"{settings.Value.UserBaseURL}{PragmaticEndpoint.ResultUrl.GetPath()}";
-                string secretKey = settings.Value.SecretKey;
+                var form = await HttpContext.Request.ReadFormAsync(ct);
 
-                logger.Information("Sending request to Pragmatic API (Result): {Url}", apiUrl);
+                var r = new Request
+                {
+                    ProviderId = form["providerId"],
+                    UserId = form["userId"],
+                    GameId = form["gameId"],
+                    RoundId = form["roundId"],
+                    Amount = decimal.TryParse(form["amount"], out var amt) ? amt : 0,
+                    Reference = form["reference"],
+                    Timestamp = long.TryParse(form["timestamp"], out var ts) ? ts : 0,
+                    RoundDetails = form["roundDetails"],
+                    BonusCode = form["bonusCode"],
+                    Platform = form["platform"],
+                    Token = form["token"],
+                    PromoWinAmount = decimal.TryParse(form["promoWinAmount"], out var promoAmt) ? promoAmt : null,
+                    PromoWinReference = form["promoWinReference"],
+                    PromoCampaignID = form["promoCampaignID"],
+                    PromoCampaignType = form["promoCampaignType"]
+                };
+
+                // Manual validation
+                var validator = new Validator();
+                var validationResult = validator.Validate(r);
+                if (!validationResult.IsValid)
+                {
+                    await SendAsync(new
+                    {
+                        error = 400,
+                        description = string.Join("; ", validationResult.Errors.Select(e => e.ErrorMessage))
+                    }, 400, ct);
+                    return;
+                }
 
                 var formData = new Dictionary<string, string>
                 {
@@ -38,33 +75,28 @@ namespace Pragmatic.Pragmatic.Features.User.Result
                     { "roundId", r.RoundId },
                     { "amount", r.Amount.ToString("F2", System.Globalization.CultureInfo.InvariantCulture) },
                     { "reference", r.Reference },
-                    { "roundDetails", r.RoundDetails },
-                    { "timestamp", r.Timestamp.ToString() }
+                    { "timestamp", r.Timestamp.ToString() },
+                    { "roundDetails", r.RoundDetails }
                 };
 
-                if (!string.IsNullOrEmpty(r.BonusCode))
-                    formData.Add("bonusCode", r.BonusCode);
-
-                if (!string.IsNullOrEmpty(r.Platform))
-                    formData.Add("platform", r.Platform);
-
-                if (!string.IsNullOrEmpty(r.Token))
-                    formData.Add("token", r.Token);
+                if (!string.IsNullOrWhiteSpace(r.BonusCode)) formData["bonusCode"] = r.BonusCode;
+                if (!string.IsNullOrWhiteSpace(r.Platform)) formData["platform"] = r.Platform;
+                if (!string.IsNullOrWhiteSpace(r.Token)) formData["token"] = r.Token;
 
                 if (r.PromoWinAmount.HasValue &&
-                    !string.IsNullOrEmpty(r.PromoWinReference) &&
-                    !string.IsNullOrEmpty(r.PromoCampaignID) &&
-                    !string.IsNullOrEmpty(r.PromoCampaignType))
+                    !string.IsNullOrWhiteSpace(r.PromoWinReference) &&
+                    !string.IsNullOrWhiteSpace(r.PromoCampaignID) &&
+                    !string.IsNullOrWhiteSpace(r.PromoCampaignType))
                 {
-                    formData.Add("promoWinAmount", r.PromoWinAmount.Value.ToString("F2", System.Globalization.CultureInfo.InvariantCulture));
-                    formData.Add("promoWinReference", r.PromoWinReference);
-                    formData.Add("promoCampaignID", r.PromoCampaignID);
-                    formData.Add("promoCampaignType", r.PromoCampaignType);
+                    formData["promoWinAmount"] = r.PromoWinAmount.Value.ToString("F2", System.Globalization.CultureInfo.InvariantCulture);
+                    formData["promoWinReference"] = r.PromoWinReference;
+                    formData["promoCampaignID"] = r.PromoCampaignID;
+                    formData["promoCampaignType"] = r.PromoCampaignType;
                 }
 
                 var sorted = formData.OrderBy(x => x.Key, StringComparer.Ordinal);
                 var queryString = string.Join("&", sorted.Select(kv => $"{kv.Key}={kv.Value}"));
-                var stringToHash = queryString + secretKey;
+                var stringToHash = queryString + settings.Value.SecretKey;
 
                 string hash;
                 using (var md5 = MD5.Create())
@@ -74,8 +106,10 @@ namespace Pragmatic.Pragmatic.Features.User.Result
                     hash = Convert.ToHexString(hashBytes).ToLower();
                 }
 
-                logger.Information("Generated hash: {Hash}", hash);
-                formData.Add("hash", hash);
+                formData["hash"] = hash;
+
+                var httpClient = Resolve<HttpClient>();
+                string apiUrl = $"{settings.Value.UserBaseURL}{PragmaticEndpoint.ResultUrl.GetPath()}";
 
                 var content = new FormUrlEncodedContent(formData);
                 var apiResponse = await httpClient.PostAsync(apiUrl, content, ct);
@@ -84,40 +118,17 @@ namespace Pragmatic.Pragmatic.Features.User.Result
                 logger.Information("Pragmatic API Status: {StatusCode}", apiResponse.StatusCode);
                 logger.Information("Pragmatic API Response: {Body}", responseBody);
 
-                if (apiResponse.IsSuccessStatusCode)
-                {
-                    var parsed = JsonConvert.DeserializeObject<dynamic>(responseBody);
-
-                    if (parsed?.error == 0)
-                    {
-                        response.IsSuccess = true;
-                        response.Message = "Result processed successfully.";
-                        response.Result = parsed;
-                    }
-                    else
-                    {
-                        response.IsSuccess = false;
-                        response.Message = parsed?.description ?? "Failed to process result.";
-                        response.Result = parsed;
-                    }
-                }
-                else
-                {
-                    response.IsSuccess = false;
-                    response.Message = $"Failed to process result. Status code: {apiResponse.StatusCode}";
-                    response.Result = null;
-                }
+                var parsed = JsonConvert.DeserializeObject<dynamic>(responseBody);
+                await SendAsync(parsed, (int)apiResponse.StatusCode, ct);
             }
             catch (Exception ex)
             {
                 logger.Error(ex, "Error processing result via Pragmatic API.");
-                response.IsSuccess = false;
-                response.Message = "Internal error occurred while calling Pragmatic API.";
-                response.Result = null;
-            }
-            finally
-            {
-                await SendAsync(response, cancellation: ct);
+                await SendAsync(new
+                {
+                    error = 500,
+                    description = "Internal server error"
+                }, 500, ct);
             }
         }
     }

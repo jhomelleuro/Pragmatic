@@ -4,12 +4,13 @@ using Pragmatic.Configuration;
 using System.Security.Cryptography;
 using System.Text;
 using Pragmatic.Helpers;
+using FluentValidation;
 using static Pragmatic.Helpers.PragmaticEndpoints;
 
 namespace Pragmatic.Pragmatic.Features.User.RoundDetails
 {
     internal sealed class Endpoint(
-        Serilog.ILogger logger, IOptions<PragmaticApiSettings> settings) : Endpoint<Request, Response>
+        Serilog.ILogger logger, IOptions<PragmaticApiSettings> settings) : EndpointWithoutRequest<object>
     {
         public override void Configure()
         {
@@ -17,18 +18,43 @@ namespace Pragmatic.Pragmatic.Features.User.RoundDetails
             AllowAnonymous();
         }
 
-        public override async Task HandleAsync(Request r, CancellationToken ct)
+        public override async Task HandleAsync(CancellationToken ct)
         {
-            var response = new Response();
-
             try
             {
-                var httpClient = Resolve<HttpClient>();
+                if (!HttpContext.Request.HasFormContentType)
+                {
+                    await SendAsync(new
+                    {
+                        error = 400,
+                        description = "Only form-urlencoded content is supported"
+                    }, 400, ct);
+                    return;
+                }
 
-                string apiUrl = $"{settings.Value.BaseUrl}{PragmaticEndpoint.RoundDetailsUrl.GetPath()}";
-                string secretKey = settings.Value.SecretKey;
+                var form = await HttpContext.Request.ReadFormAsync(ct);
 
-                logger.Information("Sending request to Pragmatic API (RoundDetails): {Url}", apiUrl);
+                var r = new Request
+                {
+                    ProviderId = form["providerId"],
+                    UserId = form["userId"],
+                    RoundId = form["roundId"],
+                    SmResult = form["smResult"],
+                    GameCategory = form["gameCategory"],
+                    BetMultiplier = int.TryParse(form["betMultiplier"], out var mult) ? mult : 0
+                };
+
+                var validator = new Validator();
+                var validationResult = validator.Validate(r);
+                if (!validationResult.IsValid)
+                {
+                    await SendAsync(new
+                    {
+                        error = 400,
+                        description = string.Join("; ", validationResult.Errors.Select(e => e.ErrorMessage))
+                    }, 400, ct);
+                    return;
+                }
 
                 var formData = new Dictionary<string, string>
                 {
@@ -40,10 +66,9 @@ namespace Pragmatic.Pragmatic.Features.User.RoundDetails
                     { "betMultiplier", r.BetMultiplier.ToString() }
                 };
 
-                // Sort & generate hash
                 var sorted = formData.OrderBy(x => x.Key, StringComparer.Ordinal);
                 var queryString = string.Join("&", sorted.Select(kv => $"{kv.Key}={kv.Value}"));
-                var stringToHash = queryString + secretKey;
+                var stringToHash = queryString + settings.Value.SecretKey;
 
                 string hash;
                 using (var md5 = MD5.Create())
@@ -57,46 +82,26 @@ namespace Pragmatic.Pragmatic.Features.User.RoundDetails
                 formData.Add("hash", hash);
 
                 var content = new FormUrlEncodedContent(formData);
+                var httpClient = Resolve<HttpClient>();
+                var apiUrl = $"{settings.Value.BaseUrl}{PragmaticEndpoint.RoundDetailsUrl.GetPath()}";
+
                 var apiResponse = await httpClient.PostAsync(apiUrl, content, ct);
                 var responseBody = await apiResponse.Content.ReadAsStringAsync(ct);
 
                 logger.Information("Pragmatic API Status: {StatusCode}", apiResponse.StatusCode);
                 logger.Information("Pragmatic API Response: {Body}", responseBody);
 
-                if (apiResponse.IsSuccessStatusCode)
-                {
-                    var parsed = JsonConvert.DeserializeObject<dynamic>(responseBody);
-
-                    if (parsed?.error == 0)
-                    {
-                        response.IsSuccess = true;
-                        response.Message = "Round details processed successfully.";
-                        response.Result = parsed;
-                    }
-                    else
-                    {
-                        response.IsSuccess = false;
-                        response.Message = parsed?.description ?? "Failed to process round details.";
-                        response.Result = parsed;
-                    }
-                }
-                else
-                {
-                    response.IsSuccess = false;
-                    response.Message = $"Failed to process round details. Status code: {apiResponse.StatusCode}";
-                    response.Result = null;
-                }
+                var parsed = JsonConvert.DeserializeObject<dynamic>(responseBody);
+                await SendAsync(parsed, (int)apiResponse.StatusCode, ct);
             }
             catch (Exception ex)
             {
                 logger.Error(ex, "Error processing round details via Pragmatic API.");
-                response.IsSuccess = false;
-                response.Message = "Internal error occurred while calling Pragmatic API.";
-                response.Result = null;
-            }
-            finally
-            {
-                await SendAsync(response, cancellation: ct);
+                await SendAsync(new
+                {
+                    error = 500,
+                    description = "Internal error occurred while calling Pragmatic API."
+                }, 500, ct);
             }
         }
     }

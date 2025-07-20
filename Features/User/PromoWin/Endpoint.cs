@@ -6,50 +6,59 @@ using System.Text;
 using Pragmatic.Helpers;
 using static Pragmatic.Helpers.PragmaticEndpoints;
 
-namespace Pragmatic.Pragmatic.Features.User.PromoWin
+namespace Pragmatic.Pragmatic.Features.User.Refund
 {
     internal sealed class Endpoint(
-        Serilog.ILogger logger, IOptions<PragmaticApiSettings> settings) : Endpoint<Request, Response>
+        Serilog.ILogger logger,
+        IOptions<PragmaticApiSettings> settings) : Endpoint<Request, Response>
     {
         public override void Configure()
         {
-            Post("/user/pragmatic/promoWin");
+            Post("/user/pragmatic/refund");
             AllowAnonymous();
         }
 
         public override async Task HandleAsync(Request r, CancellationToken ct)
         {
-            var response = new Response();
-
             try
             {
                 var httpClient = Resolve<HttpClient>();
 
-                string apiUrl = $"{settings.Value.BaseUrl}{PragmaticEndpoint.PromoWinUrl.GetPath()}";
+                string apiUrl = $"{settings.Value.BaseUrl}{PragmaticEndpoint.RefundUrl.GetPath()}";
                 string secretKey = settings.Value.SecretKey;
 
-                logger.Information("Sending request to Pragmatic API (PromoWin): {Url}", apiUrl);
+                logger.Information("Sending request to Pragmatic API (Refund): {Url}", apiUrl);
 
                 var formData = new Dictionary<string, string>
                 {
                     { "providerId", r.ProviderId },
-                    { "timestamp", r.Timestamp.ToString() },
                     { "userId", r.UserId },
-                    { "campaignId", r.CampaignId },
-                    { "campaignType", r.CampaignType },
-                    { "amount", r.Amount.ToString("F2", System.Globalization.CultureInfo.InvariantCulture) },
-                    { "currency", r.Currency },
                     { "reference", r.Reference }
                 };
 
-                if (!string.IsNullOrEmpty(r.RoundId))
-                    formData.Add("roundId", r.RoundId);
+                if (!string.IsNullOrEmpty(r.Platform))
+                    formData.Add("platform", r.Platform);
+
+                if (r.Amount.HasValue)
+                    formData.Add("amount", r.Amount.Value.ToString("F2", System.Globalization.CultureInfo.InvariantCulture));
 
                 if (!string.IsNullOrEmpty(r.GameId))
                     formData.Add("gameId", r.GameId);
 
-                if (!string.IsNullOrEmpty(r.DataType))
-                    formData.Add("dataType", r.DataType);
+                if (!string.IsNullOrEmpty(r.RoundId))
+                    formData.Add("roundId", r.RoundId);
+
+                if (r.Timestamp.HasValue)
+                    formData.Add("timestamp", r.Timestamp.Value.ToString());
+
+                if (!string.IsNullOrEmpty(r.RoundDetails))
+                    formData.Add("roundDetails", r.RoundDetails);
+
+                if (!string.IsNullOrEmpty(r.BonusCode))
+                    formData.Add("bonusCode", r.BonusCode);
+
+                if (!string.IsNullOrEmpty(r.Token))
+                    formData.Add("token", r.Token);
 
                 // Sort & generate hash
                 var sorted = formData.OrderBy(x => x.Key, StringComparer.Ordinal);
@@ -74,40 +83,19 @@ namespace Pragmatic.Pragmatic.Features.User.PromoWin
                 logger.Information("Pragmatic API Status: {StatusCode}", apiResponse.StatusCode);
                 logger.Information("Pragmatic API Response: {Body}", responseBody);
 
-                if (apiResponse.IsSuccessStatusCode)
-                {
-                    var parsed = JsonConvert.DeserializeObject<dynamic>(responseBody);
+                var parsed = JsonConvert.DeserializeObject<dynamic>(responseBody);
 
-                    if (parsed?.error == 0)
-                    {
-                        response.IsSuccess = true;
-                        response.Message = "Promo win processed successfully.";
-                        response.Result = parsed;
-                    }
-                    else
-                    {
-                        response.IsSuccess = false;
-                        response.Message = parsed?.description ?? "Failed to process promo win.";
-                        response.Result = parsed;
-                    }
-                }
-                else
-                {
-                    response.IsSuccess = false;
-                    response.Message = $"Failed to process promo win. Status code: {apiResponse.StatusCode}";
-                    response.Result = null;
-                }
+                // Return the raw parsed response with the same status code
+                await SendAsync(parsed, (int)apiResponse.StatusCode, ct);
             }
             catch (Exception ex)
             {
-                logger.Error(ex, "Error processing promo win via Pragmatic API.");
-                response.IsSuccess = false;
-                response.Message = "Internal error occurred while calling Pragmatic API.";
-                response.Result = null;
-            }
-            finally
-            {
-                await SendAsync(response, cancellation: ct);
+                logger.Error(ex, "Error processing refund via Pragmatic API.");
+                await SendAsync(new
+                {
+                    error = 500,
+                    description = "Internal error occurred while calling Pragmatic API."
+                }, 500, ct);
             }
         }
     }
