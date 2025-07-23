@@ -83,7 +83,7 @@ namespace Pragmatic.Pragmatic.Features.User.RoundDetails
 
                 var content = new FormUrlEncodedContent(formData);
                 var httpClient = Resolve<HttpClient>();
-                var apiUrl = $"{settings.Value.BaseUrl}{PragmaticEndpoint.RoundDetailsUrl.GetPath()}";
+                var apiUrl = $"{settings.Value.UserBaseURL}{PragmaticEndpoint.RoundDetailsUrl.GetPath()}";
 
                 var apiResponse = await httpClient.PostAsync(apiUrl, content, ct);
                 var responseBody = await apiResponse.Content.ReadAsStringAsync(ct);

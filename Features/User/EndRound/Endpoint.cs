@@ -62,7 +62,7 @@ namespace Pragmatic.Pragmatic.Features.User.EndRound
                 }
 
                 var httpClient = Resolve<HttpClient>();
-                string apiUrl = $"{settings.Value.BaseUrl}{PragmaticEndpoint.EndRoundUrl.GetPath()}";
+                string apiUrl = $"{settings.Value.UserBaseURL}{PragmaticEndpoint.EndRoundUrl.GetPath()}";
                 string secretKey = settings.Value.SecretKey;
 
                 logger.Information("Sending request to Pragmatic API (EndRound): {Url}", apiUrl);

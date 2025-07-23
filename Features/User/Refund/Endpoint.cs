@@ -63,7 +63,7 @@ namespace Pragmatic.Pragmatic.Features.User.Refund
                 }
 
                 var httpClient = Resolve<HttpClient>();
-                var apiUrl = $"{settings.Value.BaseUrl}{PragmaticEndpoint.RefundUrl.GetPath()}";
+                var apiUrl = $"{settings.Value.UserBaseURL}{PragmaticEndpoint.RefundUrl.GetPath()}";
                 var secretKey = settings.Value.SecretKey;
 
                 logger.Information("Sending Refund to Pragmatic API: {Url}", apiUrl);

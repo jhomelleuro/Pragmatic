@@ -58,7 +58,7 @@ namespace Pragmatic.Pragmatic.Features.User.GetBalancePerGame
 
                 var httpClient = Resolve<HttpClient>();
 
-                string apiUrl = $"{settings.Value.BaseUrl}{PragmaticEndpoint.GetBalancePerGameUrl.GetPath()}";
+                string apiUrl = $"{settings.Value.UserBaseURL}{PragmaticEndpoint.GetBalancePerGameUrl.GetPath()}";
                 string secretKey = settings.Value.SecretKey;
 
                 logger.Information("Sending request to Pragmatic API (GetBalancePerGame): {Url}", apiUrl);

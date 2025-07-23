@@ -66,7 +66,7 @@ namespace Pragmatic.Pragmatic.Features.User.JackpotWin
                 }
 
                 var httpClient = Resolve<HttpClient>();
-                var apiUrl = $"{settings.Value.BaseUrl}{PragmaticEndpoint.JackpotWinUrl.GetPath()}";
+                var apiUrl = $"{settings.Value.UserBaseURL}{PragmaticEndpoint.JackpotWinUrl.GetPath()}";
                 var secretKey = settings.Value.SecretKey;
 
                 logger.Information("Sending request to Pragmatic API (JackpotWin): {Url}", apiUrl);

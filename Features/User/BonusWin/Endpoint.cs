@@ -88,7 +88,7 @@ namespace Pragmatic.Pragmatic.Features.User.BonusWin
                 logger.Information("Generated hash: {Hash}", hash);
 
                 var httpClient = Resolve<HttpClient>();
-                var apiUrl = $"{settings.Value.BaseUrl}{PragmaticEndpoint.BonusWinUrl.GetPath()}";
+                var apiUrl = $"{settings.Value.UserBaseURL}{PragmaticEndpoint.BonusWinUrl.GetPath()}";
 
                 var content = new FormUrlEncodedContent(formData);
                 var apiResponse = await httpClient.PostAsync(apiUrl, content, ct);

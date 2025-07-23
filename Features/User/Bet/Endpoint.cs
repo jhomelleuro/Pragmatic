@@ -1,16 +1,17 @@
 ﻿using Microsoft.Extensions.Options;
 using Newtonsoft.Json;
 using Pragmatic.Configuration;
+using Pragmatic.Helpers;
+using System.Net.Http.Headers;
 using System.Security.Cryptography;
 using System.Text;
-using Pragmatic.Helpers;
 using static Pragmatic.Helpers.PragmaticEndpoints;
-using System.Net.Http.Headers;
 
 namespace Pragmatic.Pragmatic.Features.User.Bet
 {
     internal sealed class Endpoint(
-        Serilog.ILogger logger, IOptions<PragmaticApiSettings> settings) : Endpoint<Request, Response>
+        Serilog.ILogger logger,
+        IOptions<PragmaticApiSettings> settings) : EndpointWithoutRequest
     {
         public override void Configure()
         {
@@ -18,86 +19,118 @@ namespace Pragmatic.Pragmatic.Features.User.Bet
             AllowAnonymous();
         }
 
-        public override async Task HandleAsync(Request r, CancellationToken ct)
+        public override async Task HandleAsync(CancellationToken ct)
         {
-            var response = new Response();
-
             try
             {
-                var httpClient = Resolve<HttpClient>();
+                if (!HttpContext.Request.HasFormContentType)
+                {
+                    await SendAsync(new
+                    {
+                        error = 400,
+                        description = "Only form-urlencoded content is supported"
+                    }, 400, ct);
+                    return;
+                }
 
+                var form = await HttpContext.Request.ReadFormAsync(ct);
+                var token = form["Token"].ToString();
+                var amountStr = form["Amount"].ToString();
+
+                if (string.IsNullOrWhiteSpace(token) || string.IsNullOrWhiteSpace(amountStr))
+                {
+                    await SendAsync(new
+                    {
+                        error = 400,
+                        description = "Token and Amount are required"
+                    }, 400, ct);
+                    return;
+                }
+
+                if (!decimal.TryParse(amountStr, out var amount))
+                {
+                    await SendAsync(new
+                    {
+                        error = 400,
+                        description = "Invalid amount format"
+                    }, 400, ct);
+                    return;
+                }
+
+                var httpClient = Resolve<HttpClient>();
                 string apiUrl = $"{settings.Value.UserBaseURL}{PragmaticEndpoint.GetBetUrl.GetPath()}";
                 string secretKey = settings.Value.SecretKey;
 
                 logger.Information("Sending request to Pragmatic API (Bet): {Url}", apiUrl);
 
-
-                var formData = new Dictionary<string, string>();
-
-                string token = r.Token;
-                formData.Add("token", token);
-                formData.Add("amount", r.Amount.ToString("F2", System.Globalization.CultureInfo.InvariantCulture));
+                var formData = new Dictionary<string, string>
+                {
+                    { "token", token },
+                    { "amount", amount.ToString("F2", System.Globalization.CultureInfo.InvariantCulture) }
+                };
 
                 var sorted = formData.OrderBy(x => x.Key, StringComparer.Ordinal);
-                var queryString = string.Join("&", sorted.Select(kv => $"{kv.Key}={kv.Value}"));
+                string queryString = string.Join("&", sorted.Select(kv => $"{kv.Key}={kv.Value}"));
+                string stringToHash = queryString + secretKey;
 
-                var stringToHash = queryString + secretKey;
-
-                string hash;
-                using (var md5 = MD5.Create())
-                {
-                    var inputBytes = Encoding.UTF8.GetBytes(stringToHash);
-                    var hashBytes = md5.ComputeHash(inputBytes);
-                    hash = Convert.ToHexString(hashBytes).ToLower();
-                }
+                using var md5 = MD5.Create();
+                string hash = Convert.ToHexString(md5.ComputeHash(Encoding.UTF8.GetBytes(stringToHash))).ToLower();
+                formData["hash"] = hash;
 
                 logger.Information("Generated hash: {Hash}", hash);
 
-                formData["hash"] = hash;
-
                 var content = new FormUrlEncodedContent(formData);
-
                 httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
                 var apiResponse = await httpClient.PostAsync(apiUrl, content, ct);
                 var responseBody = await apiResponse.Content.ReadAsStringAsync(ct);
 
-
-                logger.Information("Pragmatic API Status: {StatusCode}", apiResponse.StatusCode, apiResponse.IsSuccessStatusCode);
+                logger.Information("Pragmatic API Status: {StatusCode}", apiResponse.StatusCode);
                 logger.Information("Pragmatic API Response: {Body}", responseBody);
 
-                if (apiResponse.IsSuccessStatusCode)
+                if (!apiResponse.IsSuccessStatusCode)
                 {
-                    dynamic parsed = JsonConvert.DeserializeObject<dynamic>(responseBody);
-
-                    string parsedJson = JsonConvert.SerializeObject(parsed, Formatting.Indented);
-                    logger.Information("Parsed JSON:\n{Parsed}", parsedJson);
-
-                    if (parsed?.transactionId != null)
+                    await SendAsync(new
                     {
-                        await SendStringAsync(responseBody, contentType: "application/json", cancellation: ct);
-                        return;
-                    }
-                    else
-                    {
-                        response.IsSuccess = false;
-                        response.Message = parsed?.description ?? "Failed to place bet.";
-                        response.Result = parsed;
-                    }
+                        error = (int)apiResponse.StatusCode,
+                        description = "Failed to place bet"
+                    }, (int)apiResponse.StatusCode, ct);
+                    return;
                 }
-                else
+
+                var parsed = JsonConvert.DeserializeObject<dynamic>(responseBody);
+
+                if (parsed == null)
                 {
-                    response.IsSuccess = false;
-                    response.Message = $"Failed to place bet. Status code: {apiResponse.StatusCode}";
-                    response.Result = null;
+                    await SendAsync(new
+                    {
+                        error = 502,
+                        description = "Invalid response from Pragmatic API"
+                    }, 502, ct);
+                    return;
                 }
+
+                if (parsed.transactionId == null)
+                {
+                    await SendAsync(new
+                    {
+                        error = 400,
+                        description = parsed.description ?? "Failed to place bet",
+                        result = parsed
+                    }, 400, ct);
+                    return;
+                }
+
+                await SendAsync(parsed);
             }
             catch (Exception ex)
             {
                 logger.Error(ex, "Error placing bet via Pragmatic API.");
-                response.IsSuccess = false;
-                response.Message = "Internal error occurred while calling Pragmatic API.";
-                response.Result = null;
+                await SendAsync(new
+                {
+                    error = 500,
+                    description = "Internal error occurred while calling Pragmatic API."
+                }, 500, ct);
             }
         }
     }

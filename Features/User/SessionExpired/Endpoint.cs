@@ -25,7 +25,7 @@ namespace Pragmatic.Pragmatic.Features.User.SessionExpired
             {
                 var httpClient = Resolve<HttpClient>();
 
-                string apiUrl = $"{settings.Value.BaseUrl}{PragmaticEndpoint.SessionExpiredUrl.GetPath()}";
+                string apiUrl = $"{settings.Value.UserBaseURL}{PragmaticEndpoint.SessionExpiredUrl.GetPath()}";
                 string secretKey = settings.Value.SecretKey;
 
                 logger.Information("Sending request to Pragmatic API (SessionExpired): {Url}", apiUrl);
