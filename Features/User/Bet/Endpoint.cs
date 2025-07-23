@@ -34,10 +34,15 @@ namespace Pragmatic.Pragmatic.Features.User.Bet
                 }
 
                 var form = await HttpContext.Request.ReadFormAsync(ct);
+                var formDataAsString = string.Join(", ", form.Select(kv => $"{kv.Key}={kv.Value}"));
+                logger.Information("Received form data: {FormData}", formDataAsString);
                 var token = form["Token"].ToString();
                 var amountStr = form["Amount"].ToString();
+                var reference = form["Reference"].ToString();
+                var roundDetails = form["roundDetails"].ToString();
+                var gameId = form["gameId"].ToString();
 
-                if (string.IsNullOrWhiteSpace(token) || string.IsNullOrWhiteSpace(amountStr))
+                if (string.IsNullOrWhiteSpace(token) || string.IsNullOrWhiteSpace(amountStr) || string.IsNullOrEmpty(reference))
                 {
                     await SendAsync(new
                     {
@@ -66,7 +71,10 @@ namespace Pragmatic.Pragmatic.Features.User.Bet
                 var formData = new Dictionary<string, string>
                 {
                     { "token", token },
-                    { "amount", amount.ToString("F2", System.Globalization.CultureInfo.InvariantCulture) }
+                    { "amount", amount.ToString("F2", System.Globalization.CultureInfo.InvariantCulture) },
+                    { "reference", reference },
+                    { "roundDetails", roundDetails },
+                    { "gameId", gameId },
                 };
 
                 var sorted = formData.OrderBy(x => x.Key, StringComparer.Ordinal);

@@ -34,6 +34,8 @@ namespace Pragmatic.Pragmatic.Features.User.Result
                 }
 
                 var form = await HttpContext.Request.ReadFormAsync(ct);
+                var formDataAsString = string.Join(", ", form.Select(kv => $"{kv.Key}={kv.Value}"));
+                logger.Information("Received form data: {FormData}", formDataAsString);
 
                 var r = new Request
                 {

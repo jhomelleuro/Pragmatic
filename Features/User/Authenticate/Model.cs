@@ -10,6 +10,9 @@ namespace Pragmatic.Pragmatic.Features.User.Authenticate
         [JsonProperty("currency")]
         public string Currency { get; set; }
 
+        [JsonProperty("token")]
+        public string Token { get; set; }
+
         [JsonProperty("cash")]
         public decimal Cash { get; set; }
 
