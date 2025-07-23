@@ -41,6 +41,7 @@ namespace Pragmatic.Pragmatic.Features.User.Bet
                 var reference = form["Reference"].ToString();
                 var roundDetails = form["roundDetails"].ToString();
                 var gameId = form["gameId"].ToString();
+                var roundId = form["roundId"].ToString();
 
                 if (string.IsNullOrWhiteSpace(token) || string.IsNullOrWhiteSpace(amountStr) || string.IsNullOrEmpty(reference))
                 {
@@ -75,6 +76,7 @@ namespace Pragmatic.Pragmatic.Features.User.Bet
                     { "reference", reference },
                     { "roundDetails", roundDetails },
                     { "gameId", gameId },
+                    { "roundId", roundId }
                 };
 
                 var sorted = formData.OrderBy(x => x.Key, StringComparer.Ordinal);
